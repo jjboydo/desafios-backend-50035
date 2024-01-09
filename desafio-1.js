@@ -2,7 +2,6 @@ class ProductManager {
     constructor(){
         this.products = []
     }
-
     #validateCode(code) {
         return this.products.some(product => product.code === code)
     }
