@@ -1,30 +1,17 @@
-const fs = require('fs')
+const fs = require('fs').promises
 
 class ProductManager {
     constructor() {
         this.path = "./products.json"
-        this.products = this.getProducts()
-        this.lastId = this.loadLastId()
+        this.loadProducts()
     }
 
-    loadLastId() {
-        if (fs.existsSync('id.json')) {
-            let idString = fs.readFileSync('id.json', 'utf8')
-            return JSON.parse(idString)
-        } else {
-            return 1
-        }
-    }
-
-    saveLastId() {
-        let idString = JSON.stringify(this.lastId)
-        fs.writeFileSync('id.json', idString)
+    async loadProducts() {
+        this.products = await this.getProducts()
     }
 
     #validateCode(code) {
-        if (!this.products) {
-            return
-        }
+        if (!this.products) return
         const result = this.products.some(product => product.code === code)
         if (result) throw new Error("There is already a product with that code")
     }
@@ -35,36 +22,45 @@ class ProductManager {
         if (!isValid) throw new Error("The product is not valid")
     }
 
-    writeFile(array, path) {
-        let productsString = JSON.stringify(array, null, '\t')
-        fs.writeFileSync(path, productsString)
-    }
-
-    addProduct(product) {
-        const { title, description, price, thumbnail, code, stock } = product
-        this.#validateCode(code)
-        this.#validateProduct(product)
-        const newProduct = {
-            id: this.lastId++,
-            title,
-            description,
-            price,
-            thumbnail,
-            code,
-            stock
+    async writeToFile(array, path) {
+        try {
+            let productsString = JSON.stringify(array, null, '\t');
+            await fs.writeFile(path, productsString);
+        } catch (error) {
+            console.error('Error writing products file:', error);
         }
-        this.products.push(newProduct)
-        this.writeFile(this.products, this.path)
-        this.saveLastId()
-        console.log("Producto agregado correctamente!")
     }
 
-    getProducts() {
-        const productsString = fs.readFileSync(this.path, 'utf8')
-        if (!productsString) {
+    async addProduct(product) {
+        try {
+            await this.loadProducts()
+            this.#validateCode(product.code)
+            this.#validateProduct(product)
+            const maxProductId = this.products.length > 0 ? Math.max(...this.products.map(p => p.id)) : 0
+            const newProductId = maxProductId + 1
+            const newProduct = {
+                id: newProductId,
+                ...product
+            }
+            this.products.push(newProduct)
+            await this.writeToFile(this.products, this.path)
+            console.log("Producto agregado correctamente!")
+        } catch (error) {
+            console.error('Error adding a product:', error)
+        }
+    }
+
+    async getProducts() {
+        try {
+            const productsString = await fs.readFile(this.path, 'utf8')
+            if (!productsString) {
+                return []
+            }
+            return JSON.parse(productsString)
+        } catch (error) {
+            console.error('Error reading product file: ', error)
             return []
         }
-        return JSON.parse(productsString)
     }
 
     getProductsById(productId) {
@@ -72,70 +68,88 @@ class ProductManager {
         return productExists || "Error! Not found"
     }
 
-    updateProduct(productId, fieldsToUpdate) {
-        const productExists = this.products.findIndex(product => product.id === productId)
-        if (productExists === -1) {
-            throw new Error("Error! Product Not found")
+    async updateProduct(productId, fieldsToUpdate) {
+        try {
+            const productExists = this.products.findIndex(product => product.id === productId)
+            if (productExists === -1) {
+                throw new Error("Product Not found")
+            }
+            this.#validateCode(fieldsToUpdate.code)
+            Object.assign(this.products[productExists], fieldsToUpdate)
+            await this.writeToFile(this.products, this.path)
+            console.log("Producto modificado correctamente!")
+        } catch (error) {
+            console.error('Error modifying product file: ', error)
         }
-        this.#validateCode(fieldsToUpdate.code)
-        Object.assign(this.products[productExists], fieldsToUpdate)
-        this.writeFile(this.products, this.path)
-        console.log("Producto modificado correctamente!")
     }
 
-    deleteProduct(productId) {
-        const productsFilter = this.products.filter(product => product.id !== productId)
-        if (productsFilter.length === this.products.length) {
-            throw new Error("Error! Product Not found")
+    async deleteProduct(productId) {
+        try {
+            const productsFilter = this.products.filter(product => product.id !== productId)
+            if (productsFilter.length === this.products.length) {
+                throw new Error("Product Not found")
+            }
+            this.products = productsFilter
+            await this.writeToFile(this.products, this.path)
+            console.log("Producto eliminado correctamente!")
+        } catch (error) {
+            console.error('Error deleting a product: ', error)
         }
-        this.writeFile(productsFilter, this.path)
-        return "Producto eliminado correctamente!"
     }
 }
 
 // TEST
 
-const productManager = new ProductManager()
+(async () => {
+    const productManager = new ProductManager()
 
-console.log('getProducts debería devolver un array vacío')
-console.log(productManager.getProducts().length === 0 ? '✔' : '❌')
+    console.log('getProducts debería devolver un array vacío')
+    console.log(await productManager.getProducts())
 
-console.log('addProduct debería agregar un producto exitosamente')
-const product = {
-    title: "producto prueba",
-    description: "Este es un producto prueba",
-    price: 200,
-    thumbnail: "Sin imagen",
-    code: "abc123",
-    stock: 25
-}
-productManager.addProduct(product)
-console.log(productManager.getProducts())
-console.log(productManager.getProducts().length === 1 ? '✔' : '❌')
+    console.log('addProduct debería agregar un producto exitosamente')
+    const product = {
+        title: "producto prueba",
+        description: "Este es un producto prueba",
+        price: 200,
+        thumbnail: "Sin imagen",
+        code: "abc123",
+        stock: 25
+    }
+    await productManager.addProduct(product)
+    console.log(await productManager.getProducts())
+
+    console.log('getProductById debería devolver el producto con el id especificado')
+    console.log(await productManager.getProductsById(1))
+    console.log('getProductById debería devolver por consola un error de producto no existente')
+    console.log(await productManager.getProductsById(22))
+
+    console.log('updateProduct debería actualizar un campo del producto')
+    const updatedProduct = {
+        title: 'Producto modificado',
+        description: 'Este es un producto que fue modificado',
+    }
+    await productManager.updateProduct(1, updatedProduct)
+    console.log(await productManager.getProductsById(1))
+    console.log('updateProduct debería tirar un error si el producto a modificar no existe')
+    productManager.updateProduct(22, updatedProduct)
+    console.log('updateProduct debería tirar un error si el campo a modificar es code, y ya existe un code igual')
+    const updatedCode = {
+        code: 'abc123',
+    }
+    await productManager.updateProduct(1, updatedCode)
+
+    console.log('deleteProduct debería eliminar un producto')
+    await productManager.deleteProduct(1)
+    console.log(await productManager.getProducts())
+    console.log('deleteProduct debería arrojar un error si el producto no existe')
+    await productManager.deleteProduct(22)
+
+})()
 
 
-console.log('getProductById debería devolver el producto con el id especificado')
-console.log(productManager.getProductsById(1))
-console.log('getProductById debería devolver por consola un error de producto no existente')
-console.log(productManager.getProductsById(22))
 
-console.log('updateProduct debería actualizar un campo del producto')
-const updatedProduct = {
-    title: 'Producto modificado',
-    description: 'Este es un producto que fue modificado',
-}
-productManager.updateProduct(1, updatedProduct)
-console.log(productManager.getProductsById(1))
-console.log('updateProduct debería tirar un error si el producto a modificar no existe')
-productManager.updateProduct(22, updatedProduct)
-console.log('updateProduct debería tirar un error si el campo a modificar es code, y ya existe un code igual')
-const updatedCode = {
-    code: 'abc123',
-}
-productManager.updateProduct(1, updatedCode)
 
-console.log('deleteProduct debería eliminar un producto')
-productManager.deleteProduct(1)
-console.log(productManager.getProducts().length === 0 ? '✔' : '❌')
-console.log('deleteProduct debería arrojar un error si el producto no existe')
-productManager.deleteProduct(22)
+
+
+
+
