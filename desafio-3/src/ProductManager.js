@@ -1,8 +1,8 @@
 import fs from 'fs/promises'
 
 export default class ProductManager {
-    constructor() {
-        this.path = "./products.json"
+    constructor(path) {
+        this.path = path
         this.loadProducts()
     }
 
@@ -65,7 +65,7 @@ export default class ProductManager {
 
     getProductsById(productId) {
         const productExists = this.products.find(product => product.id === productId)
-        return productExists || "Error! Not found"
+        return productExists
     }
 
     async updateProduct(productId, fieldsToUpdate) {

@@ -6,7 +6,7 @@ const app = express()
 app.use(express.urlencoded({ extended: true }))
 app.use(json())
 
-const productManager = new ProductManager()
+const productManager = new ProductManager("./products.json")
 
 app.get('/products', async (req, res) => {
     const limit = parseInt(req.query.limit)
@@ -17,15 +17,9 @@ app.get('/products', async (req, res) => {
 
 app.get('/products/:pid', async (req, res) => {
     const productId = parseInt(req.params.pid)
-
-    const products = await productManager.getProducts()
-    const product = products.find(prod => prod.id === productId)
-
-    if (!product) {
-        res.status(404).json({ error: `Product ${productId} does not exist!` })
-    } else {
-        res.json(product)
-    }
+    const product = await productManager.getProductsById(productId)
+    if (!product) res.status(404).json({ error: `Product ${productId} does not exist!` })
+    res.json(product)
 })
 
 app.listen(PORT, () => console.log(`Servidor corriendo en el puerto ${PORT}`))
